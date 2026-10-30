@@ -1,0 +1,16 @@
+# Raw TSE packages, DuckDB & local virtualenvs (120+ GB)
+/data/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Logs & local agent/deploy metadata
+*.log
+.claude/
+.vercel/
+.env*
+
+# Frontend build & dependencies
+node_modules/
+site/dist/
+site/dist-ssr/

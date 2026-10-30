@@ -1,0 +1,106 @@
+@import 'tailwindcss';
+
+/*
+ * Dark-only. Everything is grayscale on purpose: in Brazil green and yellow
+ * read as a political side, so the only color on the page is the flag itself.
+ * "Verified" is carried by the ✓ glyph, not by a hue.
+ */
+@theme {
+  --font-sans: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --color-fundo: #000000;
+  --color-papel: #0f0f0f;
+  --color-tinta: #f2f2f2; /* 18.9:1 on fundo */
+  --color-suave: #a3a3a3; /* 8.2:1 on fundo, 7.4:1 on papel */
+  --color-linha: #2a2a2a;
+  --color-confere: #f2f2f2;
+  --color-confere-claro: #1c1c1c;
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-fundo);
+  color: var(--color-tinta);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-tinta);
+  color: var(--color-fundo);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The printed ballot-box report: warm thermal paper with a torn edge.
+ * It re-scopes the ink tokens so utilities inside it (text-suave, border-suave…)
+ * stay legible on light paper (suave here is 6.3:1).
+ */
+.boletim {
+  --color-papel: #f4f2ec;
+  --color-tinta: #141414;
+  --color-suave: #57554f;
+  background: var(--color-papel);
+  color: var(--color-tinta);
+  mask:
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
+}
+
+/* the receipt slides out of the slot once, like a real printer */
+.impressora {
+  overflow: hidden;
+  padding: 0 12px 24px;
+}
+.impressora .boletim {
+  animation: imprime 1.6s cubic-bezier(0.3, 0.7, 0.2, 1) 0.2s both;
+}
+@keyframes imprime {
+  from {
+    translate: 0 -100%;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .impressora .boletim {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-tinta);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23a3a3a3' stroke-width='1.6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.9rem center;
+  padding-right: 2.5rem;
+}
