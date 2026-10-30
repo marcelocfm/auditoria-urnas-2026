@@ -282,8 +282,8 @@ function Tecnico({ data }: { data: Auditoria }) {
         <ul className="list-disc space-y-2.5 pl-5 text-base text-suave">
           <li>
             {t(
-              'Não compara o boletim publicado com o papel colado na porta de cada seção. Isso só quem esteve lá pode fazer — use a busca',
-              'It does not compare the published report with the paper posted on each polling station door. Only someone who was there can do that — use the lookup',
+              'O confronto com o papel impresso afixado na porta de cada seção depende de quem fotografou o boletim no local — você pode enviar a foto do QR Code direto em',
+              'Comparing against the physical paper posted on each polling station door requires a photo taken on site — you can upload or scan the report QR code directly in',
             )}{' '}
             <a href="#secao" className="text-tinta underline underline-offset-2">
               {t('Confira a sua seção', 'Check your polling station')}
@@ -651,8 +651,8 @@ function Site({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
               id="secao"
               titulo={t('Confira a sua seção', 'Check your polling station')}
               intro={t(
-                'A soma só vale se cada boletim estiver certo. Escolha onde você votou e compare com a foto do boletim colado na porta da seção, ou leia o QR Code dele com o aplicativo oficial Boletim na Mão.',
-                'The sum only holds if every report is right. Pick where you voted and compare with a photo of the report posted on the polling station door, or scan its QR code with the official “Boletim na Mão” app.',
+                'A soma só vale se cada boletim estiver certo. Busque sua cidade para ver o total do município e da sua seção, envie uma foto do QR Code do boletim impresso ou gere a imagem do recibo da urna.',
+                'The sum only holds if every report is right. Search your city to see municipality and station totals, upload or scan the printed report QR code, or download your machine’s receipt image.',
               )}
             >
               <SectionLookup />

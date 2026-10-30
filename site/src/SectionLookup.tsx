@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { collatorPtBr, num, pct, signedNum, UFS } from './format'
-import { useT } from './i18n'
+import { useLang, useT } from './i18n'
+import { compararQrComBase, type DadosQrBu } from './qrBu'
 import type { SecoesUF } from './types'
+
+const QrScannerModal = lazy(() => import('./QrScannerModal').then((m) => ({ default: m.QrScannerModal })))
 
 type SecaoDetalhe = {
   turno: number
@@ -20,10 +23,27 @@ type SecaoDetalhe = {
 
 type IndiceMunicipios = Map<string, Map<number, Map<number, (string | number)[][]>>>
 
+type PacoteEstadoIndexado = {
+  index: IndiceMunicipios
+  porZonaSecao: Map<string, string>
+  colPos: Record<string, number>
+}
+
 type ItemCidade = {
   uf: string
   municipio: string
   chaveBusca: string
+}
+
+type ResumoTurnoCidade = {
+  secoes: number
+  aptos: number
+  comparecimento: number
+  lula: number
+  flavio: number
+  outros: number
+  brancos: number
+  nulos: number
 }
 
 let cachedCidades: ItemCidade[] | null = null
@@ -90,7 +110,7 @@ function readInitialParams() {
   }
 }
 
-function buildSectionIndex(payload: SecoesUF): { index: IndiceMunicipios; colPos: Record<string, number> } {
+function buildSectionIndex(payload: SecoesUF): PacoteEstadoIndexado {
   const colPos: Record<string, number> = {}
   payload.colunas.forEach((colName, idx) => {
     colPos[colName] = idx
@@ -100,10 +120,14 @@ function buildSectionIndex(payload: SecoesUF): { index: IndiceMunicipios; colPos
   const secaoIdx = colPos.secao
 
   const index: IndiceMunicipios = new Map()
+  const porZonaSecao = new Map<string, string>()
+
   for (const row of payload.linhas) {
     const munName = String(row[munIdx])
     const zonaNum = Number(row[zonaIdx])
     const secaoNum = Number(row[secaoIdx])
+
+    porZonaSecao.set(`${zonaNum}:${secaoNum}`, munName)
 
     let zonasMap = index.get(munName)
     if (!zonasMap) {
@@ -122,7 +146,7 @@ function buildSectionIndex(payload: SecoesUF): { index: IndiceMunicipios; colPos
     }
     turnRows.push(row)
   }
-  return { index, colPos }
+  return { index, porZonaSecao, colPos }
 }
 
 function tupleToSecao(row: (string | number)[], colPos: Record<string, number>): SecaoDetalhe {
@@ -142,6 +166,10 @@ function tupleToSecao(row: (string | number)[], colPos: Record<string, number>):
   }
 }
 
+function criarResumoVazio(): ResumoTurnoCidade {
+  return { secoes: 0, aptos: 0, comparecimento: 0, lula: 0, flavio: 0, outros: 0, brancos: 0, nulos: 0 }
+}
+
 function buildShareUrl(uf: string, municipio: string, zona: string, secao: string): string {
   const url = new URL(window.location.href)
   url.searchParams.set('uf', uf)
@@ -154,18 +182,24 @@ function buildShareUrl(uf: string, municipio: string, zona: string, secao: strin
 
 export function SectionLookup() {
   const t = useT()
+  const lang = useLang()
   const initial = useMemo(() => readInitialParams(), [])
   const [uf, setUf] = useState(initial.uf)
   const [reloadToken, setReloadToken] = useState(0)
   const [loadedState, setLoadedState] = useState<{
     key: string
-    parsed: { index: IndiceMunicipios; colPos: Record<string, number> } | null
+    parsed: PacoteEstadoIndexado | null
     error: boolean
   }>({ key: '', parsed: null, error: false })
   const [municipio, setMunicipio] = useState(initial.municipio)
   const [zona, setZona] = useState(initial.zona)
   const [secao, setSecao] = useState(initial.secao)
   const [copied, setCopied] = useState(false)
+  const [gerandoPng, setGerandoPng] = useState(false)
+
+  // QR Scanner & verification state
+  const [scannerAberto, setScannerAberto] = useState(false)
+  const [qrLido, setQrLido] = useState<DadosQrBu | null>(null)
 
   // Quick city search state
   const [buscaCidade, setBuscaCidade] = useState('')
@@ -180,7 +214,7 @@ export function SectionLookup() {
     carregarIndiceCidades()
       .then((lista) => setCidades(lista))
       .catch(() => {
-        // Fallback: dropdowns below remain 100% functional
+        // Dropdowns remain 100% functional
       })
   }, [cidades.length])
 
@@ -205,9 +239,20 @@ export function SectionLookup() {
     setMunicipio(item.municipio)
     setZona('')
     setSecao('')
+    setQrLido(null)
     setBuscaCidade(`${item.municipio} (${item.uf === 'ZZ' ? 'Exterior' : item.uf})`)
     setMenuAberto(false)
     window.setTimeout(() => zonaSelectRef.current?.focus(), 60)
+  }, [])
+
+  const aoLerQrBu = useCallback((dados: DadosQrBu) => {
+    setScannerAberto(false)
+    setQrLido(dados)
+    if (dados.uf in UFS) {
+      setUf(dados.uf)
+      setZona(String(dados.zona))
+      setSecao(String(dados.secao))
+    }
   }, [])
 
   const currentKey = uf ? `${uf}#${reloadToken}` : ''
@@ -223,7 +268,8 @@ export function SectionLookup() {
       })
       .then((payload) => {
         if (cancelled) return
-        setLoadedState({ key: currentKey, parsed: buildSectionIndex(payload), error: false })
+        const built = buildSectionIndex(payload)
+        setLoadedState({ key: currentKey, parsed: built, error: false })
       })
       .catch(() => {
         if (!cancelled) setLoadedState({ key: currentKey, parsed: null, error: true })
@@ -244,37 +290,86 @@ export function SectionLookup() {
         ? 'error'
         : 'ready'
 
+  // Auto-resolve municipality name when a QR code was scanned
+  const municipioEfetivo = useMemo(() => {
+    if (qrLido && indexedData && qrLido.uf === uf) {
+      const achado = indexedData.porZonaSecao.get(`${qrLido.zona}:${qrLido.secao}`)
+      if (achado) return achado
+    }
+    return municipio
+  }, [qrLido, indexedData, uf, municipio])
+
   const municipios = useMemo(() => {
     if (!indexedData) return []
     return [...indexedData.index.keys()].sort(collatorPtBr.compare)
   }, [indexedData])
 
   const zonas = useMemo(() => {
-    const zonasMap = indexedData?.index.get(municipio)
+    const zonasMap = indexedData?.index.get(municipioEfetivo)
     if (!zonasMap) return []
     return [...zonasMap.keys()].sort((a, b) => a - b)
-  }, [indexedData, municipio])
+  }, [indexedData, municipioEfetivo])
 
   const secoes = useMemo(() => {
-    const secoesMap = indexedData?.index.get(municipio)?.get(Number(zona))
+    const secoesMap = indexedData?.index.get(municipioEfetivo)?.get(Number(zona))
     if (!secoesMap) return []
     return [...secoesMap.keys()].sort((a, b) => a - b)
-  }, [indexedData, municipio, zona])
+  }, [indexedData, municipioEfetivo, zona])
+
+  // #2: Instant City-Wide Consolidated Summary (1st & 2nd round across all stations in the selected city)
+  const resumoCidade = useMemo(() => {
+    if (!indexedData || !municipioEfetivo) return null
+    const zonasMap = indexedData.index.get(municipioEfetivo)
+    if (!zonasMap) return null
+
+    const pos = indexedData.colPos
+    const r1 = criarResumoVazio()
+    const r2 = criarResumoVazio()
+
+    for (const secoesMap of zonasMap.values()) {
+      for (const rows of secoesMap.values()) {
+        for (const row of rows) {
+          const alvo = Number(row[pos.turno]) === 1 ? r1 : r2
+          alvo.secoes += 1
+          alvo.aptos += Number(row[pos.aptos])
+          alvo.comparecimento += Number(row[pos.comparecimento])
+          alvo.lula += Number(row[pos.lula])
+          alvo.flavio += Number(row[pos.flavio])
+          alvo.outros += Number(row[pos.outros])
+          alvo.brancos += Number(row[pos.brancos])
+          alvo.nulos += Number(row[pos.nulos])
+        }
+      }
+    }
+
+    if (r1.secoes === 0 && r2.secoes === 0) return null
+    return { t1: r1, t2: r2, zonasTotal: zonasMap.size }
+  }, [indexedData, municipioEfetivo])
 
   const secaoEncontrada = useMemo(() => {
-    if (!indexedData || !municipio || !zona || !secao) return []
-    const rawRows = indexedData.index.get(municipio)?.get(Number(zona))?.get(Number(secao))
+    if (!indexedData || !municipioEfetivo || !zona || !secao) return []
+    const rawRows = indexedData.index.get(municipioEfetivo)?.get(Number(zona))?.get(Number(secao))
     if (!rawRows) return []
     return rawRows
       .map((row) => tupleToSecao(row, indexedData.colPos))
       .sort((a, b) => a.turno - b.turno)
-  }, [indexedData, municipio, zona, secao])
+  }, [indexedData, municipioEfetivo, zona, secao])
+
+  // Compare scanned QR Code against TSE database row
+  const comparacaoQr = useMemo(() => {
+    if (!qrLido || secaoEncontrada.length === 0) return null
+    if (qrLido.uf !== uf || String(qrLido.zona) !== zona || String(qrLido.secao) !== secao) return null
+    const turnoAlvo = qrLido.turno ?? 2
+    const base = secaoEncontrada.find((s) => s.turno === turnoAlvo) ?? secaoEncontrada[secaoEncontrada.length - 1]
+    if (!base) return null
+    return { base, resultado: compararQrComBase(qrLido, base) }
+  }, [qrLido, secaoEncontrada, uf, zona, secao])
 
   // Keep browser URL synced whenever a complete station is selected
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (secaoEncontrada.length > 0 && uf && municipio && zona && secao) {
-      const shareUrl = buildShareUrl(uf, municipio, zona, secao)
+    if (secaoEncontrada.length > 0 && uf && municipioEfetivo && zona && secao) {
+      const shareUrl = buildShareUrl(uf, municipioEfetivo, zona, secao)
       window.history.replaceState(null, '', shareUrl)
       if (initial.hasDeepLink && !jaRolouDeepLink.current) {
         jaRolouDeepLink.current = true
@@ -283,108 +378,146 @@ export function SectionLookup() {
         })
       }
     }
-  }, [secaoEncontrada.length, uf, municipio, zona, secao, initial.hasDeepLink])
+  }, [secaoEncontrada.length, uf, municipioEfetivo, zona, secao, initial.hasDeepLink])
 
   const copyShareLink = useCallback(() => {
-    if (typeof window === 'undefined' || !uf || !municipio || !zona || !secao) return
-    const shareUrl = buildShareUrl(uf, municipio, zona, secao)
+    if (typeof window === 'undefined' || !uf || !municipioEfetivo || !zona || !secao) return
+    const shareUrl = buildShareUrl(uf, municipioEfetivo, zona, secao)
     window.history.replaceState(null, '', shareUrl)
     navigator.clipboard?.writeText(shareUrl).then(() => {
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2200)
     })
-  }, [uf, municipio, zona, secao])
+  }, [uf, municipioEfetivo, zona, secao])
+
+  const baixarReciboPng = useCallback(async () => {
+    if (!uf || secaoEncontrada.length === 0) return
+    setGerandoPng(true)
+    try {
+      const { baixarImagemBoletimSecao } = await import('./reciboPng')
+      await baixarImagemBoletimSecao({ uf, secoes: secaoEncontrada, lang })
+    } finally {
+      setGerandoPng(false)
+    }
+  }, [uf, secaoEncontrada, lang])
 
   const t1 = secaoEncontrada.find((s) => s.turno === 1)
   const t2 = secaoEncontrada.find((s) => s.turno === 2)
 
   const whatsappHref = useMemo(() => {
-    if (typeof window === 'undefined' || !uf || !municipio || !zona || !secao || secaoEncontrada.length === 0) {
+    if (typeof window === 'undefined' || !uf || !municipioEfetivo || !zona || !secao || secaoEncontrada.length === 0) {
       return ''
     }
-    const shareUrl = buildShareUrl(uf, municipio, zona, secao)
+    const shareUrl = buildShareUrl(uf, municipioEfetivo, zona, secao)
     const placar2t = t2 ? ` (2ºT: Lula ${num(t2.lula)} × Flávio ${num(t2.flavio)})` : ''
     const msg = t(
-      `Confira o boletim de urna da Seção ${secao}, Zona ${zona} — ${municipio}/${uf}${placar2t}: ${shareUrl}`,
-      `Check the ballot-box report for Section ${secao}, Zone ${zona} — ${municipio}/${uf}${placar2t}: ${shareUrl}`,
+      `Confira o boletim de urna da Seção ${secao}, Zona ${zona} — ${municipioEfetivo}/${uf}${placar2t}: ${shareUrl}`,
+      `Check the ballot-box report for Section ${secao}, Zone ${zona} — ${municipioEfetivo}/${uf}${placar2t}: ${shareUrl}`,
     )
     return `https://wa.me/?text=${encodeURIComponent(msg)}`
-  }, [uf, municipio, zona, secao, secaoEncontrada.length, t2, t])
+  }, [uf, municipioEfetivo, zona, secao, secaoEncontrada.length, t2, t])
 
   return (
     <div className="space-y-5">
-      {/* Instant City Search across all 5,717 cities + overseas stations */}
-      <div className="relative">
-        <label className="block text-sm font-medium text-suave" htmlFor="busca-cidade-rapida">
-          {t('Busca rápida de município ou cidade no exterior', 'Quick search by city or overseas station')}
-        </label>
-        <div className="relative mt-2">
-          <input
-            id="busca-cidade-rapida"
-            type="search"
-            autoComplete="off"
-            value={buscaCidade}
-            placeholder={t('Digite sua cidade (ex.: Campinas, Uberlândia, Lisboa)…', 'Type a city (e.g. São Paulo, Curitiba, Miami)…')}
-            onFocus={() => {
-              garantirCidades()
-              setMenuAberto(true)
-            }}
-            onBlur={() => {
-              window.setTimeout(() => setMenuAberto(false), 160)
-            }}
-            onChange={(event) => {
-              garantirCidades()
-              setBuscaCidade(event.target.value)
-              setIndiceAtivo(0)
-              setMenuAberto(true)
-            }}
-            onKeyDown={(event) => {
-              if (!menuAberto || sugestoesCidade.length === 0) return
-              if (event.key === 'ArrowDown') {
-                event.preventDefault()
-                setIndiceAtivo((idx) => (idx + 1) % sugestoesCidade.length)
-              } else if (event.key === 'ArrowUp') {
-                event.preventDefault()
-                setIndiceAtivo((idx) => (idx - 1 + sugestoesCidade.length) % sugestoesCidade.length)
-              } else if (event.key === 'Enter') {
-                event.preventDefault()
-                const escolhido = sugestoesCidade[indiceAtivo]
-                if (escolhido) escolherCidade(escolhido)
-              } else if (event.key === 'Escape') {
-                setMenuAberto(false)
-              }
-            }}
-            className="min-h-12 w-full border border-linha bg-papel px-4 text-base text-tinta placeholder:text-suave/60 transition-colors hover:border-suave focus:border-tinta focus:outline-none"
-          />
-          {menuAberto && sugestoesCidade.length > 0 && (
-            <ul
-              role="listbox"
-              className="absolute z-30 mt-1 max-h-72 w-full divide-y divide-linha overflow-y-auto border border-tinta bg-fundo shadow-2xl"
-            >
-              {sugestoesCidade.map((item, idx) => {
-                const ativo = idx === indiceAtivo
-                return (
-                  <li key={`${item.uf}-${item.municipio}`} role="option" aria-selected={ativo}>
-                    <button
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => escolherCidade(item)}
-                      className={`flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left text-sm transition-colors ${
-                        ativo ? 'bg-tinta text-fundo font-semibold' : 'text-tinta hover:bg-papel'
-                      }`}
-                    >
-                      <span>{item.municipio}</span>
-                      <span className={`font-mono text-xs ${ativo ? 'text-fundo' : 'text-suave'}`}>
-                        {item.uf === 'ZZ' ? t('Exterior (ZZ)', 'Abroad (ZZ)') : `${UFS[item.uf] ?? item.uf} (${item.uf})`}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+      {/* Top Row: Quick City Search + QR Code Scanner Trigger */}
+      <div className="grid items-end gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="relative">
+          <label className="block text-sm font-medium text-suave" htmlFor="busca-cidade-rapida">
+            {t('Busca rápida de município ou cidade no exterior', 'Quick search by city or overseas station')}
+          </label>
+          <div className="relative mt-2">
+            <input
+              id="busca-cidade-rapida"
+              type="search"
+              autoComplete="off"
+              value={buscaCidade}
+              placeholder={t('Digite sua cidade (ex.: Campinas, Uberlândia, Lisboa)…', 'Type a city (e.g. São Paulo, Curitiba, Miami)…')}
+              onFocus={() => {
+                garantirCidades()
+                setMenuAberto(true)
+              }}
+              onBlur={() => {
+                window.setTimeout(() => setMenuAberto(false), 160)
+              }}
+              onChange={(event) => {
+                garantirCidades()
+                setBuscaCidade(event.target.value)
+                setIndiceAtivo(0)
+                setMenuAberto(true)
+              }}
+              onKeyDown={(event) => {
+                if (!menuAberto || sugestoesCidade.length === 0) return
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  setIndiceAtivo((idx) => (idx + 1) % sugestoesCidade.length)
+                } else if (event.key === 'ArrowUp') {
+                  event.preventDefault()
+                  setIndiceAtivo((idx) => (idx - 1 + sugestoesCidade.length) % sugestoesCidade.length)
+                } else if (event.key === 'Enter') {
+                  event.preventDefault()
+                  const escolhido = sugestoesCidade[indiceAtivo]
+                  if (escolhido) escolherCidade(escolhido)
+                } else if (event.key === 'Escape') {
+                  setMenuAberto(false)
+                }
+              }}
+              className="min-h-12 w-full border border-linha bg-papel px-4 text-base text-tinta placeholder:text-suave/60 transition-colors hover:border-suave focus:border-tinta focus:outline-none"
+            />
+            {menuAberto && sugestoesCidade.length > 0 && (
+              <ul
+                role="listbox"
+                className="absolute z-30 mt-1 max-h-72 w-full divide-y divide-linha overflow-y-auto border border-tinta bg-fundo shadow-2xl"
+              >
+                {sugestoesCidade.map((item, idx) => {
+                  const ativo = idx === indiceAtivo
+                  return (
+                    <li key={`${item.uf}-${item.municipio}`} role="option" aria-selected={ativo}>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => escolherCidade(item)}
+                        className={`flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left text-sm transition-colors ${
+                          ativo ? 'bg-tinta font-semibold text-fundo' : 'text-tinta hover:bg-papel'
+                        }`}
+                      >
+                        <span>{item.municipio}</span>
+                        <span className={`font-mono text-xs ${ativo ? 'text-fundo' : 'text-suave'}`}>
+                          {item.uf === 'ZZ' ? t('Exterior (ZZ)', 'Abroad (ZZ)') : `${UFS[item.uf] ?? item.uf} (${item.uf})`}
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setScannerAberto((aberto) => !aberto)}
+          aria-expanded={scannerAberto}
+          className={`min-h-12 cursor-pointer border px-4 text-sm font-semibold whitespace-nowrap transition-colors ${
+            scannerAberto
+              ? 'border-tinta bg-tinta text-fundo'
+              : 'border-tinta bg-papel text-tinta hover:bg-tinta hover:text-fundo'
+          }`}
+        >
+          {t('Ler QR Code / Foto do Boletim', 'Scan QR Code / Report Photo')}
+        </button>
       </div>
+
+      {scannerAberto && (
+        <Suspense
+          fallback={
+            <div className="border border-linha bg-papel p-5 text-sm text-suave">
+              {t('Carregando leitor de QR Code…', 'Loading QR code reader…')}
+            </div>
+          }
+        >
+          <QrScannerModal onDetectado={aoLerQrBu} onFechar={() => setScannerAberto(false)} />
+        </Suspense>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-4">
         <label className="block text-sm font-medium text-suave">
@@ -397,6 +530,7 @@ export function SectionLookup() {
               setMunicipio('')
               setZona('')
               setSecao('')
+              setQrLido(null)
               setBuscaCidade('')
             }}
           >
@@ -413,12 +547,13 @@ export function SectionLookup() {
           {uf === 'ZZ' ? t('Cidade / País', 'City / Country') : t('Município', 'Municipality')}
           <select
             className={selectClassName}
-            value={municipio}
+            value={municipioEfetivo}
             disabled={status !== 'ready'}
             onChange={(event) => {
               setMunicipio(event.target.value)
               setZona('')
               setSecao('')
+              setQrLido(null)
             }}
           >
             <option value="">
@@ -438,10 +573,12 @@ export function SectionLookup() {
             ref={zonaSelectRef}
             className={selectClassName}
             value={zona}
-            disabled={!municipio || zonas.length === 0}
+            disabled={!municipioEfetivo || zonas.length === 0}
             onChange={(event) => {
+              setMunicipio(municipioEfetivo)
               setZona(event.target.value)
               setSecao('')
+              setQrLido(null)
             }}
           >
             <option value="">{t('Escolha…', 'Select…')}</option>
@@ -459,7 +596,11 @@ export function SectionLookup() {
             className={selectClassName}
             value={secao}
             disabled={!zona || secoes.length === 0}
-            onChange={(event) => setSecao(event.target.value)}
+            onChange={(event) => {
+              setMunicipio(municipioEfetivo)
+              setSecao(event.target.value)
+              setQrLido(null)
+            }}
           >
             <option value="">{t('Escolha…', 'Select…')}</option>
             {secoes.map((numeroSecao) => (
@@ -486,19 +627,177 @@ export function SectionLookup() {
         </div>
       )}
 
+      {/* #2: Instant Consolidated Municipality Card */}
+      {resumoCidade && resumoCidade.t2.secoes > 0 && (
+        <div className="border border-linha bg-papel p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-linha pb-3">
+            <div>
+              <p className="font-mono text-[11px] tracking-wider text-suave uppercase">
+                {t('Consolidado do município (soma de todas as urnas)', 'Municipality total (sum of all machines)')}
+              </p>
+              <h4 className="mt-0.5 text-lg font-bold">
+                {municipioEfetivo} ({uf})
+              </h4>
+            </div>
+            <span className="num font-mono text-xs text-suave">
+              {num(resumoCidade.t2.secoes)} {t('seções', 'sections')} · {num(resumoCidade.zonasTotal)}{' '}
+              {resumoCidade.zonasTotal === 1 ? t('zona', 'zone') : t('zonas', 'zones')}
+            </span>
+          </div>
+
+          {(() => {
+            const validos2 = resumoCidade.t2.lula + resumoCidade.t2.flavio
+            const pctL2 = validos2 > 0 ? (100 * resumoCidade.t2.lula) / validos2 : 50
+            const saldo2 = resumoCidade.t2.lula - resumoCidade.t2.flavio
+            return (
+              <div className="num mt-4 space-y-3">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs text-suave">Lula (13) · 2ºT</p>
+                    <p className="font-mono text-lg font-bold text-tinta">
+                      {num(resumoCidade.t2.lula)}{' '}
+                      <span className="text-xs font-normal text-suave">({pct(resumoCidade.t2.lula, validos2)})</span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-suave">Flávio Bolsonaro (22) · 2ºT</p>
+                    <p className="font-mono text-lg font-bold text-tinta">
+                      {num(resumoCidade.t2.flavio)}{' '}
+                      <span className="text-xs font-normal text-suave">({pct(resumoCidade.t2.flavio, validos2)})</span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-suave">{t('Saldo na cidade (2ºT)', 'City margin (2nd R.)')}</p>
+                    <p className="font-mono text-lg font-bold text-tinta">
+                      {saldo2 >= 0 ? `Lula +${num(saldo2)}` : `Flávio +${num(Math.abs(saldo2))}`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex h-2.5 w-full overflow-hidden bg-linha" aria-hidden>
+                  <div className="bg-tinta" style={{ width: `${pctL2.toFixed(1)}%` }} />
+                </div>
+
+                <div className="flex flex-wrap justify-between gap-2 font-mono text-xs text-suave">
+                  <span>
+                    {t('Comparecimento 2ºT', '2nd R. turnout')}: {num(resumoCidade.t2.comparecimento)} / {num(resumoCidade.t2.aptos)} (
+                    {pct(resumoCidade.t2.comparecimento, resumoCidade.t2.aptos)})
+                  </span>
+                  {resumoCidade.t1.secoes > 0 && (
+                    <span>
+                      {t('1ºT na cidade', '1st R. in city')}: Lula {num(resumoCidade.t1.lula)} × Flávio {num(resumoCidade.t1.flavio)}
+                    </span>
+                  )}
+                </div>
+
+                {secaoEncontrada.length === 0 && (
+                  <p className="border-t border-linha pt-2.5 text-xs text-suave">
+                    {t(
+                      '↑ Escolha a Zona e a Seção acima (ou escaneie o QR Code do boletim) para abrir a sua urna individual.',
+                      '↑ Select Zone and Section above (or scan the report QR code) to inspect your individual voting machine.',
+                    )}
+                  </p>
+                )}
+              </div>
+            )
+          })()}
+        </div>
+      )}
+
+      {/* #1: Printed QR Code vs Official TSE Database Comparison Report */}
+      {comparacaoQr && (
+        <div className="space-y-4 border-2 border-tinta bg-papel p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-linha pb-3">
+            <div>
+              <p className="font-mono text-xs tracking-wider text-suave uppercase">
+                {t('Confronto direto: Boletim Impresso (QR Code) × Arquivo TSE', 'Direct comparison: Printed Report (QR Code) × TSE File')}
+              </p>
+              <p className="mt-0.5 text-sm font-semibold">
+                {comparacaoQr.base.municipio} ({uf}) · {t('Zona', 'Zone')} {comparacaoQr.base.zona} · {t('Seção', 'Section')}{' '}
+                {comparacaoQr.base.secao} · {comparacaoQr.base.turno}º {t('turno', 'round')}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`border px-3 py-1 font-mono text-xs font-bold uppercase ${
+                  comparacaoQr.resultado.confereTudo
+                    ? 'border-emerald-500 bg-emerald-950 text-emerald-300'
+                    : 'border-red-500 bg-red-950 text-red-300'
+                }`}
+              >
+                {comparacaoQr.resultado.confereTudo
+                  ? t('✓ Papel 100% igual ao TSE', '✓ Paper 100% matches TSE')
+                  : t('≠ Divergência detectada', '≠ Mismatch detected')}
+              </span>
+              <button
+                type="button"
+                onClick={() => setQrLido(null)}
+                className="cursor-pointer border border-linha px-2 py-1 font-mono text-xs text-suave hover:border-tinta hover:text-tinta"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {!comparacaoQr.resultado.temVotosPresidente ? (
+            <p className="text-sm text-suave">
+              {t(
+                `Este é o QR Code parte ${qrLido?.parte}/${qrLido?.totalPartes} da seção (identificação da urna conferida). Para comparar os votos de Presidente, escaneie o QR Code que contém o bloco CARG:1.`,
+                `This is QR code part ${qrLido?.parte}/${qrLido?.totalPartes} of the station (machine ID verified). To compare presidential votes, scan the QR code containing CARG:1.`,
+              )}
+            </p>
+          ) : (
+            <div className="-mx-1 overflow-x-auto px-1">
+              <table className="num w-full min-w-[420px] text-sm">
+                <thead className="border-b border-linha font-mono text-xs text-suave">
+                  <tr>
+                    <th className="py-2 text-left font-medium">{t('Campo', 'Field')}</th>
+                    <th className="py-2 pl-4 text-right font-medium">{t('No papel (QR Code)', 'On paper (QR Code)')}</th>
+                    <th className="py-2 pl-4 text-right font-medium">{t('Publicado pelo TSE', 'Published by TSE')}</th>
+                    <th className="py-2 pl-4 text-right font-medium">{t('Status', 'Status')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-linha font-mono">
+                  {comparacaoQr.resultado.itens.map((item) => (
+                    <tr key={item.campoPt}>
+                      <td className="py-2 font-sans text-tinta">{lang === 'en' ? item.campoEn : item.campoPt}</td>
+                      <td className="py-2 pl-4 text-right">{num(item.papel)}</td>
+                      <td className="py-2 pl-4 text-right">{num(item.tse)}</td>
+                      <td className={`py-2 pl-4 text-right font-bold ${item.igual ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {item.igual ? '✓ OK' : `≠ (${signedNum(item.papel - item.tse)})`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {secaoEncontrada.length > 0 && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-linha pb-3 text-sm">
             <p className="text-sm font-medium text-tinta">
-              {municipio} ({uf}) · {t('Zona', 'Zone')} {zona} · {t('Seção', 'Section')} {secao}
+              {municipioEfetivo} ({uf}) · {t('Zona', 'Zone')} {zona} · {t('Seção', 'Section')} {secao}
             </p>
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void baixarReciboPng()}
+                disabled={gerandoPng}
+                className="min-h-9 cursor-pointer border border-tinta bg-tinta px-3 py-1.5 font-mono text-xs font-semibold text-fundo transition-opacity hover:opacity-85 disabled:opacity-50"
+              >
+                {gerandoPng
+                  ? t('Gerando imagem…', 'Rendering image…')
+                  : t('Baixar imagem do boletim (PNG)', 'Download report image (PNG)')}
+              </button>
               {whatsappHref && (
                 <a
                   href={whatsappHref}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex min-h-9 items-center border border-tinta bg-tinta px-3 py-1.5 font-mono text-xs font-semibold text-fundo transition-opacity hover:opacity-85"
+                  className="inline-flex min-h-9 items-center border border-tinta bg-papel px-3 py-1.5 font-mono text-xs font-semibold text-tinta transition-colors hover:bg-tinta hover:text-fundo"
                 >
                   {t('Enviar no WhatsApp ↗', 'Share on WhatsApp ↗')}
                 </a>
@@ -605,8 +904,8 @@ export function SectionLookup() {
 
           <p className="max-w-[68ch] text-sm leading-relaxed text-suave">
             {t(
-              'Compare cada linha com o boletim de urna impresso afixado na porta da seção ou confira o QR Code pelo app ',
-              'Compare every line with the printed ballot-box report posted on the polling station door, or scan its QR code with the official ',
+              'Compare cada linha com o boletim de urna impresso afixado na porta da seção, envie uma foto do QR Code no leitor acima ou use o app oficial ',
+              'Compare every line with the printed ballot-box report posted on the polling station door, upload a photo of its QR code in the scanner above, or use the official ',
             )}
             <strong className="text-tinta">Boletim na Mão</strong>
             {t(
