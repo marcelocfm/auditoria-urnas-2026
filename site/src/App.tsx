@@ -426,7 +426,7 @@ function Site({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
     <a
       href={href}
       aria-current={rota === alvo ? 'page' : undefined}
-      className={`flex min-h-10 items-center border-b-2 px-1 text-sm font-semibold ${
+      className={`flex min-h-10 items-center border-b-2 px-1 text-[13px] font-semibold sm:text-sm ${
         rota === alvo ? 'border-tinta text-tinta' : 'border-transparent text-suave hover:text-tinta'
       }`}
     >
@@ -442,7 +442,7 @@ function Site({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
             <Bandeira className="h-[21px] w-[30px] shrink-0 sm:h-[25px] sm:w-9" />
             <span className="whitespace-nowrap">{t('As urnas conferem?', 'Do the machines add up?')}</span>
           </a>
-          <div className="order-last flex w-full items-center gap-5 overflow-x-auto">
+          <div className="order-last flex w-full flex-wrap items-center gap-x-3 sm:gap-x-5">
             {menu('inicio', '#/', t('Apuração', 'Count'))}
             {menu('relatorio', '#/relatorio', t('Relatório', 'Report'))}
             {menu('fatos', '#/fatos', 'Fact check')}
