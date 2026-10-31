@@ -297,8 +297,8 @@ function Tecnico({ data }: { data: Auditoria }) {
           </li>
           <li>
             {t(
-              'Conferimos que os arquivos de cada urna são exatamente os que ela assinou (pelos hashes). A assinatura digital em si usa um algoritmo próprio do TSE (código 1.3.6.1.4.1.44588.2.1) que as ferramentas públicas não conseguem verificar.',
-              'We checked that each machine’s files are exactly the ones it signed (via hashes). The digital signature itself uses a TSE-specific algorithm (code 1.3.6.1.4.1.44588.2.1) that public tools cannot verify.',
+              'Conferimos que os arquivos de cada urna são exatamente os que ela assinou (pelos hashes), e verificamos a assinatura digital (Ed521 ou ECDSA P-521) e o certificado das 499.178 urnas: todos válidos. Detalhes na página Inconsistências.',
+              'We checked that each machine’s files are exactly the ones it signed (via hashes), and verified the digital signature (Ed521 or ECDSA P-521) and certificate of all 499,178 machines: all valid. Details on the Inconsistencies page.',
             )}
           </li>
           <li>
@@ -689,8 +689,8 @@ function Site({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
                   <p className="text-2xl font-bold tracking-tight sm:text-3xl">Fact check</p>
                   <p className="mt-2.5 text-suave">
                     {t(
-                      'Pesquisas, virada, prorrogação, biometria, mesários, urnas novas, estados vencidos e dígitos finais: 16 afirmações conferidas nos dados.',
-                      'Polls, the comeback, extended hours, biometrics, poll workers, newer machines, states won and ending digits: 16 claims checked in the data.',
+                      'Pesquisas, virada, prorrogação, biometria, mesários, urnas novas, estados vencidos e dígitos finais: cada afirmação conferida nos dados.',
+                      'Polls, the comeback, extended hours, biometrics, poll workers, newer machines, states won and ending digits: each claim checked in the data.',
                     )}
                   </p>
                 </div>

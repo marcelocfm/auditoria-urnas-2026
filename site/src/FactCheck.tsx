@@ -536,19 +536,44 @@ export function FactCheck({
       detalhes: <Fonte links={[['Aos Fatos', 'https://www.aosfatos.org/noticias/e-falso-que-urnas-tinham-votos-pre-registrados-para-lula-em-serafina-correa-rs/']]} />,
     },
     {
-      afirmacao: t('A urna registrou votos diferentes dos que as pessoas digitaram.', 'The machine recorded votes different from what people typed.'),
-      veredito: 'falso',
+      afirmacao: t(
+        'Os dados batem, mas a fraude foi dentro da urna: o programa gravou votos diferentes dos que as pessoas digitaram.',
+        'The data adds up, but the fraud happened inside the machine: the software recorded votes different from what people typed.',
+      ),
+      veredito: 'nao_verificavel',
       resumo: t(
-        `Recontamos, um por um, os votos guardados dentro de ${num(r.com_rdv)} urnas. Em todas, a recontagem é igual ao boletim impresso na porta da seção.`,
-        `We recounted, one by one, the votes stored inside ${num(r.com_rdv)} machines. In every one, the recount equals the report printed on the polling station door.`,
+        `Os arquivos não conseguem responder isso. Recontamos, um por um, os votos guardados dentro de ${num(r.com_rdv)} urnas, e em todas a recontagem é igual ao boletim. Mas um programa adulterado gravaria o voto errado já na hora da tecla, e todos os arquivos continuariam batendo entre si.`,
+        `The files cannot answer this. We recounted, one by one, the votes stored inside ${num(r.com_rdv)} machines, and in every one the recount equals the report. But tampered software would record the wrong vote at the moment of the keypress, and every file would still match the others.`,
       ),
       detalhes: (
-        <p>
-          {t(
-            'A urna guarda cada voto separadamente (o RDV). Se o programa trocasse votos na hora de somar, a recontagem do RDV daria diferente do boletim. Deu igual em todas. Isso não testa o programa no momento em que o eleitor aperta a tecla — isso é objeto do Teste Público de Segurança do TSE.',
-            'The machine stores each vote separately (the RDV). If the software swapped votes when adding them up, the RDV recount would differ from the report. It matched in every machine. This does not test the software at the moment the voter presses the key — that is covered by the TSE Public Security Test.',
-          )}
-        </p>
+        <>
+          <p>
+            {t(
+              'O que os arquivos provam: nada foi alterado depois que a urna gravou os votos (boletim, RDV, log, assinatura e certificado conferem em todas as urnas). O que não provam: que o programa gravou o que o eleitor digitou.',
+              'What the files prove: nothing was changed after the machine recorded the votes (report, RDV, log, signature and certificate match in every machine). What they do not prove: that the software recorded what the voter typed.',
+            )}
+          </p>
+          <p>
+            {t(
+              'O teste que cobre esse ponto é o Teste de Integridade: urnas sorteadas na véspera recebem, no dia da eleição, uma votação em cédulas de papel, filmada, e no fim o boletim é comparado com as cédulas. No 2º turno, segundo a Justiça Eleitoral, não houve divergência no TSE (2 urnas, 389 votos), em São Paulo (33 urnas), em Alagoas (23) e em Santa Catarina (27). É um teste por amostra, feito e divulgado pela própria Justiça Eleitoral, que não conseguimos refazer de fora.',
+              'The test that covers this is the Integrity Test: machines drawn the day before receive, on election day, a filmed vote using paper ballots, and at the end the report is compared with the ballots. In the 2nd round, according to the Electoral Courts, there was no discrepancy at the TSE (2 machines, 389 votes), in São Paulo (33 machines), Alagoas (23) or Santa Catarina (27). It is a sample test, run and reported by the Electoral Courts themselves, which we cannot redo from outside.',
+            )}
+          </p>
+          <p>
+            {t(
+              'A urna também confere a assinatura do próprio programa antes de funcionar. Em Lamim (MG), a assinatura não bateu e a urna se recusou a abrir a votação (página Inconsistências). Para um programa adulterado rodar, ele precisaria estar assinado com a chave do TSE.',
+              'The machine also checks its own software signature before running. In Lamim (MG) the signature failed and the machine refused to open voting (Inconsistencies page). For tampered software to run, it would have to be signed with the TSE key.',
+            )}
+          </p>
+          <Fonte
+            links={[
+              ['TSE', 'https://www.tse.jus.br/comunicacao/noticias/2026/Outubro/teste-de-integridade-do-2o-turno-no-tse-confirma-correspondencia-entre-cedulas-e-votos-nas-urnas'],
+              ['TRE-SP', 'https://www.tre-sp.jus.br/comunicacao/noticias/2026/Outubro/teste-de-integridade-das-urnas-no-2o-turno-e-concluido-sem-divergencias-em-sao-paulo'],
+              ['TRE-SC', 'https://www.tre-sc.jus.br/comunicacao/noticias/2026/Outubro/teste-de-integridade-confirma-seguranca-da-urna-e-reforca-a-transparencia-das-eleicoes-2026'],
+              ['Cada Minuto (AL)', 'https://www.cadaminuto.com.br/noticia/2026/10/27/eleicoes-2026-23-urnas-eletronicas-foram-auditadas-durante-o-2-turno-em-al'],
+            ]}
+          />
+        </>
       ),
     },
     {
@@ -654,6 +679,34 @@ export function FactCheck({
           {t('Ficam principalmente em', 'They are mostly in')}: {f.extremos.municipios.join(', ')} —{' '}
           {t('municípios com grandes terras indígenas.', 'municipalities with large Indigenous territories.')}
         </p>
+      ),
+    },
+    {
+      afirmacao: t('124 mil urnas tiveram votos só para Lula.', '124,000 machines had votes only for Lula.'),
+      veredito: 'falso',
+      resumo: t(
+        `Contamos nos boletins das 499.207 seções: são ${num(f.extremos.secoes)} seções com todos os votos válidos para Lula (somando ${num(f.extremos.lula_2t)} votos), não 124 mil. O total de votos que circula está certo; o número de urnas, não. Outras ${num(f.extremos_flavio)} seções deram todos os votos válidos a Flávio.`,
+        `We counted across the reports of all 499,207 stations: ${num(f.extremos.secoes)} stations gave every valid vote to Lula (${num(f.extremos.lula_2t)} votes in total), not 124,000. The vote total being shared is right; the number of machines is not. Another ${num(f.extremos_flavio)} stations gave every valid vote to Flávio.`,
+      ),
+      detalhes: <Fonte links={[['Fato ou Boato', 'https://www.justicaeleitoral.jus.br/fato-ou-boato/checagens/2026/e-falso-que-124-mil-urnas-tenham-registrado-votos-apenas-para-lula-no-2o-turno-das-eleicoes-2026']]} />,
+    },
+    {
+      afirmacao: t(
+        'A soma de três boletins em Teixeira de Freitas (BA) prova fraude: a diferença dá 164 votos, e o TSE mostra 93.',
+        'Adding up three reports in Teixeira de Freitas (BA) proves fraud: the gap is 164 votes, but the TSE shows 93.',
+      ),
+      veredito: 'falso',
+      resumo: t(
+        'A cidade tem 303 seções. Somando todas, Flávio venceu por 41.454 a 41.361, ou seja, 93 votos, como mostra o TSE. Flávio ganhou em 175 seções e Lula em 128. Três seções escolhidas entre as melhores de Flávio dão uma diferença maior que a da cidade: só as três melhores somam 331 votos de vantagem. As outras seções compensam.',
+        'The city has 303 stations. Adding all of them, Flávio won 41,454 to 41,361, i.e. by 93 votes, as the TSE shows. Flávio won 175 stations and Lula 128. Three stations picked from Flávio’s best give a bigger gap than the city’s: his top three alone add up to a 331-vote lead. The other stations offset it.',
+      ),
+      detalhes: (
+        <Fonte
+          links={[
+            ['Aos Fatos', 'https://www.aosfatos.org/noticias/soma-votos-tres-secoes-ba-nao-comprova-fraude/'],
+            ['Fato ou Boato', 'https://www.justicaeleitoral.jus.br/fato-ou-boato/checagens/2026/soma-de-tres-boletins-de-urna-nao-comprova-fraude-na-eleicao-presidencial-em-teixeira-de-freitas-ba'],
+          ]}
+        />
       ),
     },
     {

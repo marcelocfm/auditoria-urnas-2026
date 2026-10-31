@@ -197,8 +197,8 @@ export function Inconsistencias({ d, listas, urnas }: { d: InconsistenciasData; 
           <Achado numero="99.928" titulo={t('Urnas cujo certificado depende de uma autoridade com certificado vencido', 'Machines whose certificate depends on an authority with an expired certificate')}>
             <p>
               {t(
-                'As urnas antigas (UE2013 e UE2015), 99.928 no 2º turno, têm certificado emitido pela “AC URNA”. O certificado publicado dessa autoridade venceu em 18/07/2026, três meses antes da eleição. Mesmo assim, os certificados das urnas que ela emitiu valem até 2027–2037, além do vencimento dela, o que as regras usuais de certificados não preveem. O projeto aberto DataUrnas-BR registra ainda uma urna UE2013 com certificado emitido em 03/08/2026, depois do vencimento. As assinaturas conferem com a chave da AC URNA; a explicação mais provável é um certificado renovado da AC URNA com a mesma chave, que o TSE não publicou. Não encontramos explicação pública do TSE.',
-                'The older machines (UE2013 and UE2015), 99,928 in the 2nd round, have certificates issued by “AC URNA”. That authority’s published certificate expired on July 18, 2026, three months before the election. Even so, the machine certificates it issued are valid until 2027–2037, beyond its own expiry, which standard certificate rules do not allow for. The open project DataUrnas-BR also records a UE2013 machine with a certificate issued on Aug 3, 2026, after the expiry. The signatures match the AC URNA key; the most likely explanation is a renewed AC URNA certificate with the same key that the TSE has not published. We found no public explanation from the TSE.',
+                'As urnas antigas (UE2013 e UE2015), 99.928 no 2º turno, têm certificado emitido pela “AC URNA”. O certificado publicado dessa autoridade venceu em 18/07/2026, três meses antes da eleição. Mesmo assim, os certificados das urnas que ela emitiu valem até 2027–2037, além do vencimento dela, o que as regras usuais de certificados não preveem. A AC URNA também continuou emitindo certificados de urna depois de vencer. O projeto aberto auditoria-2turno-eleicao2026 conta 54 certificados emitidos entre 20/07 e 19/10/2026, usados em 53 seções no 2º turno. Conferimos 2 deles direto no arquivo do TSE: as urnas das seções 71072/0004/0114 e 62634/0214/0003 de SP têm certificado emitido em 18/10 e 19/10/2026, entre os dois turnos. As assinaturas conferem com a chave da AC URNA; a explicação mais provável é um certificado renovado da AC URNA com a mesma chave, que o TSE não publicou. O mesmo projeto não encontrou diferença de voto nessas 53 seções em relação às vizinhas. Não encontramos explicação pública do TSE.',
+                'The older machines (UE2013 and UE2015), 99,928 in the 2nd round, have certificates issued by “AC URNA”. That authority’s published certificate expired on July 18, 2026, three months before the election. Even so, the machine certificates it issued are valid until 2027–2037, beyond its own expiry, which standard certificate rules do not allow for. AC URNA also kept issuing machine certificates after it expired. The open project auditoria-2turno-eleicao2026 counts 54 certificates issued between Jul 20 and Oct 19, 2026, used in 53 stations in the 2nd round. We checked 2 of them directly in the TSE file: the machines of SP stations 71072/0004/0114 and 62634/0214/0003 have certificates issued on Oct 18 and Oct 19, 2026, between the two rounds. The signatures match the AC URNA key; the most likely explanation is a renewed AC URNA certificate with the same key that the TSE has not published. The same project found no vote difference in those 53 stations compared with their neighbours. We found no public explanation from the TSE.',
               )}
             </p>
           </Achado>
@@ -224,6 +224,20 @@ export function Inconsistencias({ d, listas, urnas }: { d: InconsistenciasData; 
           </Achado>
           <Achado numero="+2,96 mi" titulo={t('Votantes a mais no 2º turno', 'Extra voters in the 2nd round')}>
             <p>{t('A abstenção caiu de 21,08% para 19,22%.', 'Abstention fell from 21.08% to 19.22%.')}</p>
+          </Achado>
+          <Achado numero="+3,4 pp" titulo={t('Salvador: a virada de Lula foi maior que no resto da Bahia e nas outras capitais', 'Salvador: Lula’s swing was larger than in the rest of Bahia and in other state capitals')}>
+            <p>
+              {t(
+                'Do 1º para o 2º turno, Lula subiu 8,0 pontos em Salvador (65,3% → 73,2% dos válidos) e 4,6 no resto da Bahia. A diferença, 3,4 pontos, equivale a uns 54 mil votos. Nas outras capitais do Nordeste e em SP, RJ e BH, a capital ficou entre 0,3 e 2,5 pontos acima do resto do estado. O projeto aberto urna-lab chegou ao mesmo sinal por outro método.',
+                'From the 1st to the 2nd round, Lula rose 8.0 points in Salvador (65.3% → 73.2% of valid votes) and 4.6 in the rest of Bahia. The 3.4-point gap is about 54,000 votes. In the other Northeast capitals and in SP, RJ and BH, the capital was between 0.3 and 2.5 points above the rest of the state. The open project urna-lab found the same signal using another method.',
+              )}
+            </p>
+            <p>
+              {t(
+                'Em Salvador o comparecimento subiu 5,5% e brancos e nulos caíram de 7,3% para 4,3%, as maiores variações entre essas capitais. Isso é compatível com mobilização local, mas não encontramos a causa. Os boletins, a recontagem do RDV e as assinaturas das urnas de Salvador conferem. Os 54 mil votos são 1,2% da diferença nacional.',
+                'In Salvador turnout rose 5.5% and blank and null votes fell from 7.3% to 4.3%, the largest changes among these capitals. That fits local mobilisation, but we did not find the cause. Salvador’s reports, RDV recount and machine signatures all match. The 54,000 votes are 1.2% of the national gap.',
+              )}
+            </p>
           </Achado>
           <Achado numero={num(listas.comparecimento_20pp.linhas.length)} titulo={t('Seções onde o comparecimento subiu 20 pontos ou mais', 'Stations where turnout rose 20+ points')}>
             <p>{t('Lista completa na página Verifique.', 'Full list on the Verify page.')}</p>
