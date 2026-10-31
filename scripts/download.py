@@ -116,7 +116,12 @@ def _job(url, folder):
 
 
 def main():
-    if sys.argv[1:] == ["urna"]:
+    if sys.argv[1:2] == ["urna"] and len(sys.argv) > 2:
+        # selected packages: urna <turno> <UF> [UF...], e.g. urna 1 BA
+        turno, ufs = sys.argv[2], sys.argv[3:]
+        urls = [(u, f"urna_{turno}t") for u in resources("resultados-2026-arquivos-transmitidos-para-totalizacao")
+                if u.endswith(".zip") and any(u.endswith(f"_{turno}t_{uf}.zip") for uf in ufs)]
+    elif sys.argv[1:] == ["urna"]:
         # raw ballot-box files (signed BU, RDV, logs): second round only, ~124 GB
         urls = [(u, "urna") for u in resources("resultados-2026-arquivos-transmitidos-para-totalizacao")
                 if u.endswith(".zip") and "_2t_" in u]

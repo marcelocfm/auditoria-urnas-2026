@@ -18,11 +18,16 @@ import {
 } from './Investigacao'
 import { SectionLookup } from './SectionLookup'
 import type { ForenseData } from './SimuladorForense'
+import type { ListasData } from './Verifique'
+import type { InconsistenciasData } from './Inconsistencias'
 import type { Auditoria } from './types'
 import { useJsonResource } from './useJson'
 
 const Exterior = lazy(() => import('./Exterior').then((m) => ({ default: m.Exterior })))
 const FactCheck = lazy(() => import('./FactCheck').then((m) => ({ default: m.FactCheck })))
+const Relatorio = lazy(() => import('./Relatorio').then((m) => ({ default: m.Relatorio })))
+const Inconsistencias = lazy(() => import('./Inconsistencias').then((m) => ({ default: m.Inconsistencias })))
+const Verifique = lazy(() => import('./Verifique').then((m) => ({ default: m.Verifique })))
 const SimuladorForense = lazy(() => import('./SimuladorForense').then((m) => ({ default: m.SimuladorForense })))
 
 function Boletim({ data }: { data: Auditoria }) {
@@ -336,7 +341,7 @@ function Recarregar({ texto, onClick }: { texto: string; onClick: () => void }) 
   )
 }
 
-type Rota = 'inicio' | 'fatos' | 'forense' | 'exterior'
+type Rota = 'inicio' | 'fatos' | 'forense' | 'exterior' | 'verifique' | 'inconsistencias' | 'relatorio'
 
 /** Pages behind the hash: "#/fatos", "#/forense", "#/exterior"; anything else is the main page (plain "#id" anchors scroll). */
 function useRota(): Rota {
@@ -345,6 +350,9 @@ function useRota(): Rota {
     if (h.startsWith('#/fatos')) return 'fatos'
     if (h.startsWith('#/forense')) return 'forense'
     if (h.startsWith('#/exterior')) return 'exterior'
+    if (h.startsWith('#/verifique')) return 'verifique'
+    if (h.startsWith('#/inconsistencias')) return 'inconsistencias'
+    if (h.startsWith('#/relatorio')) return 'relatorio'
     return 'inicio'
   }
   const [rota, setRota] = useState<Rota>(ler)
@@ -404,10 +412,12 @@ function Site({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
   const rota = useRota()
   const auditoria = useJsonResource<Auditoria>('/data/auditoria.json')
   const alegacoes = useJsonResource<Alegacoes>('/data/alegacoes.json', rota === 'inicio' || rota === 'fatos')
-  const urnas = useJsonResource<Urnas>('/data/urnas.json', rota === 'inicio' || rota === 'fatos')
+  const urnas = useJsonResource<Urnas>('/data/urnas.json', rota === 'inicio' || rota === 'fatos' || rota === 'inconsistencias')
   const factcheck = useJsonResource<FactData>('/data/factcheck.json', rota === 'fatos')
   const forense = useJsonResource<ForenseData>('/data/forense.json', rota === 'forense' || rota === 'fatos')
   const exterior = useJsonResource<ExteriorData>('/data/exterior.json', rota === 'exterior')
+  const listas = useJsonResource<ListasData>('/data/listas.json', rota === 'verifique' || rota === 'inconsistencias')
+  const inconsist = useJsonResource<InconsistenciasData>('/data/inconsistencias.json', rota === 'inconsistencias')
   const estados = useJsonResource<LinhaEstado[]>('/data/estados.json', rota === 'inicio')
   const data = auditoria.data
   const secoes2T = data?.resumo.find((r) => r.turno === 2)?.bu.secoes
@@ -432,11 +442,14 @@ function Site({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
             <Bandeira className="h-[21px] w-[30px] shrink-0 sm:h-[25px] sm:w-9" />
             <span className="whitespace-nowrap">{t('As urnas conferem?', 'Do the machines add up?')}</span>
           </a>
-          <div className="order-last flex w-full items-center gap-5 overflow-x-auto sm:order-none sm:w-auto">
+          <div className="order-last flex w-full items-center gap-5 overflow-x-auto">
             {menu('inicio', '#/', t('Apuração', 'Count'))}
+            {menu('relatorio', '#/relatorio', t('Relatório', 'Report'))}
             {menu('fatos', '#/fatos', 'Fact check')}
             {menu('forense', '#/forense', t('Simulador', 'Forensics'))}
             {menu('exterior', '#/exterior', t('Exterior', 'Abroad'))}
+            {menu('inconsistencias', '#/inconsistencias', t('Inconsistências', 'Inconsistencies'))}
+            {menu('verifique', '#/verifique', t('Verifique', 'Verify'))}
           </div>
           <div className="flex items-center gap-3">
             <div className="flex border border-linha text-xs font-semibold" role="group" aria-label={t('Idioma', 'Language')}>
@@ -463,7 +476,64 @@ function Site({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
         </nav>
       </header>
 
-      {rota === 'exterior' ? (
+      {rota === 'relatorio' ? (
+        <main className="mx-auto max-w-5xl px-4 pt-12 pb-28 sm:px-6 sm:pt-20">
+          <h1 className="max-w-[20ch] text-[2.5rem] leading-[1.06] font-extrabold tracking-tight text-balance sm:text-6xl">
+            {t('Relatório da auditoria', 'Audit report')}
+          </h1>
+          <div className="mt-10">
+            <Suspense fallback={carregando}>
+              <Relatorio />
+            </Suspense>
+          </div>
+        </main>
+      ) : rota === 'inconsistencias' ? (
+        <main className="mx-auto max-w-5xl px-4 pt-12 pb-28 sm:px-6 sm:pt-20">
+          <h1 className="max-w-[18ch] text-[2.5rem] leading-[1.06] font-extrabold tracking-tight text-balance sm:text-6xl">
+            {t('Inconsistências', 'Inconsistencies')}
+          </h1>
+          <p className="mt-6 max-w-[62ch] text-lg leading-relaxed text-suave">
+            {t(
+              'Tudo o que encontramos de errado, estranho ou fora do comum, com o número exato. Sem conclusão: os fatos ficam aqui para cada um avaliar.',
+              'Everything we found wrong, odd or out of the ordinary, with the exact number. No conclusions: the facts are here for everyone to judge.',
+            )}
+          </p>
+          <div className="mt-12">
+            {inconsist.status === 'error' || listas.status === 'error' || urnas.status === 'error' ? (
+              <Recarregar texto={t('Não foi possível carregar os dados.', 'Could not load the data.')} onClick={() => { inconsist.reload(); listas.reload(); urnas.reload() }} />
+            ) : inconsist.data && listas.data && urnas.data ? (
+              <Suspense fallback={carregando}>
+                <Inconsistencias d={inconsist.data} listas={listas.data} urnas={urnas.data} />
+              </Suspense>
+            ) : (
+              carregando
+            )}
+          </div>
+        </main>
+      ) : rota === 'verifique' ? (
+        <main className="mx-auto max-w-5xl px-4 pt-12 pb-28 sm:px-6 sm:pt-20">
+          <h1 className="max-w-[18ch] text-[2.5rem] leading-[1.06] font-extrabold tracking-tight text-balance sm:text-6xl">
+            {t('Verifique você mesmo', 'Verify it yourself')}
+          </h1>
+          <p className="mt-6 max-w-[62ch] text-lg leading-relaxed text-suave">
+            {t(
+              'Não confie no site: confira. Aqui estão os arquivos, o código, as seções que mais merecem uma visita e o que ainda não deu para verificar.',
+              'Don’t trust this site: check it. Here are the files, the code, the stations most worth a visit and what we could not verify yet.',
+            )}
+          </p>
+          <div className="mt-12">
+            {listas.status === 'error' ? (
+              <Recarregar texto={t('Não foi possível carregar as listas.', 'Could not load the lists.')} onClick={listas.reload} />
+            ) : listas.data ? (
+              <Suspense fallback={carregando}>
+                <Verifique d={listas.data} />
+              </Suspense>
+            ) : (
+              carregando
+            )}
+          </div>
+        </main>
+      ) : rota === 'exterior' ? (
         <main className="mx-auto max-w-5xl px-4 pt-12 pb-28 sm:px-6 sm:pt-20">
           <h1 className="max-w-[18ch] text-[2.5rem] leading-[1.06] font-extrabold tracking-tight text-balance sm:text-6xl">
             {t('Votos no exterior', 'Votes abroad')}
@@ -636,8 +706,8 @@ function Site({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
                   </p>
                   <p className="mt-2.5 text-suave">
                     {t(
-                      'Marque e desmarque filtros sobre as 499.207 urnas em tempo real (só UE2022, sem mesário, biometria, contingência, regiões) e veja a recontagem na hora.',
-                      'Toggle filters across all 499,207 machines in real time (UE2022 only, zero poll-worker releases, biometrics, contingency, regions) and see the live recount.',
+                      'Marque e desmarque filtros sobre as 499.207 urnas em tempo real (só UE2022, sem mesário, biometria, contingência) e veja a recontagem na hora.',
+                      'Toggle filters across all 499,207 machines in real time (UE2022 only, zero poll-worker releases, biometrics, contingency) and see the live recount.',
                     )}
                   </p>
                 </div>
@@ -677,6 +747,17 @@ function Site({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
       <footer className="border-t border-linha">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-10 text-sm text-suave sm:px-6">
           <p>{t('Projeto independente. Dados públicos do Tribunal Superior Eleitoral.', 'Independent project. Public data from Brazil’s Superior Electoral Court (TSE).')}</p>
+          <a
+            href="https://github.com/marcelocfm"
+            target="_blank"
+            rel="noreferrer"
+            className="flex min-h-10 items-center gap-2 text-suave underline-offset-2 hover:text-tinta hover:underline"
+          >
+            <svg aria-hidden viewBox="0 0 16 16" className="size-4 fill-current">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+            </svg>
+            github.com/marcelocfm
+          </a>
           {data && (
             <p>
               {t('Atualizado em', 'Updated on')} {new Date(data.gerado_em).toLocaleString(loc())}.

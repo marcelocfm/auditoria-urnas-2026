@@ -125,12 +125,6 @@ export function SimuladorForense({ d }: { d: ForenseData }) {
       titulo: t('Excluir encerradas após 17h15 ou com mudança de aptos', 'Exclude stations closed after 5:15 pm or with voter-roll shifts'),
       detalhe: t('Remove seções com fila/prorrogação e variações de voto em trânsito.', 'Removes stations with late lines/extended hours and transit-vote shifts.'),
     },
-    {
-      bit: 256,
-      titulo: t('Simulação geográfica: excluir os 9 estados do Nordeste', 'Geographic simulation: exclude the 9 Northeast states'),
-      detalhe: t('Recorte apenas territorial (Sul + Sudeste + Centro-Oeste + Norte + Exterior).', 'Purely territorial cut (South + Southeast + Center-West + North + Abroad).'),
-      geografico: true,
-    },
   ]
 
   const calculo = useMemo(() => {
@@ -181,8 +175,7 @@ export function SimuladorForense({ d }: { d: ForenseData }) {
     [t('Resultado oficial (todas)', 'Official count (all)'), 0],
     [t('Só UE2020 + UE2022', 'UE2020 + UE2022 only'), 1],
     [t('Só UE2022', 'UE2022 only'), 2],
-    [t('8 filtros técnicos juntos', 'All 8 technical filters'), mascaraTecnicaMaxima],
-    [t('Sem Nordeste (territorial)', 'Excl. Northeast (territorial)'), 256],
+    [t('Todos os filtros técnicos juntos', 'All technical filters together'), mascaraTecnicaMaxima],
   ]
 
   const serieAtual = d.digitos[abaDigito]
@@ -190,6 +183,7 @@ export function SimuladorForense({ d }: { d: ForenseData }) {
   const foraNordeste = d.regioes.filter((r) => r.regiao !== 'Nordeste')
   const lulaForaNE = foraNordeste.reduce((s, r) => s + r.lula_2t, 0)
   const flavioForaNE = foraNordeste.reduce((s, r) => s + r.flavio_2t, 0)
+  const saldoNE = d.regioes.find((r) => r.regiao === 'Nordeste')?.saldo_lula_2t ?? 0
 
   return (
     <div className="space-y-20">
@@ -330,12 +324,12 @@ export function SimuladorForense({ d }: { d: ForenseData }) {
       {/* 2. Regional & State Arithmetic */}
       <section className="space-y-5 border-t border-linha pt-14">
         <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          {t('Geografia do voto: onde Flávio venceu e onde a eleição virou', 'Geography of the vote: where Flávio won and where the race turned')}
+          {t('Resultado por região', 'Result by region')}
         </h2>
         <p className="num max-w-[66ch] leading-relaxed text-suave">
           {t(
-            `No 2º turno, Flávio Bolsonaro venceu em ${d.estados_vencidos.flavio_ufs_2t} das 27 unidades da federação e liderou nas regiões Sul, Centro-Oeste e Sudeste — somando +${num(flavioForaNE - lulaForaNE)} votos de frente fora do Nordeste (${pct(flavioForaNE, lulaForaNE + flavioForaNE)} × ${pct(lulaForaNE, lulaForaNE + flavioForaNE)}). Como a eleição presidencial soma todos os votos válidos do país num colégio único, a vantagem de +13.653.696 votos de Lula no Nordeste superou essa margem em +4.430.191 votos.`,
-            `In the 2nd round, Flávio Bolsonaro won ${d.estados_vencidos.flavio_ufs_2t} of the 27 federative units and led in the South, Center-West and Southeast — building a +${num(flavioForaNE - lulaForaNE)} vote lead outside the Northeast (${pct(flavioForaNE, lulaForaNE + flavioForaNE)} × ${pct(lulaForaNE, lulaForaNE + flavioForaNE)}). Because Brazil’s presidential race totals all valid votes nationwide in a single pool, Lula’s +13,653,696 vote margin in the Northeast outweighed that lead by +4,430,191 votes.`,
+            `No 2º turno, Flávio Bolsonaro venceu em ${d.estados_vencidos.flavio_ufs_2t} das 27 unidades da federação e liderou nas regiões Sul, Centro-Oeste e Sudeste — somando +${num(flavioForaNE - lulaForaNE)} votos de frente fora do Nordeste (${pct(flavioForaNE, lulaForaNE + flavioForaNE)} × ${pct(lulaForaNE, lulaForaNE + flavioForaNE)}). Como a eleição presidencial soma todos os votos válidos do país num colégio único, a vantagem de +${num(saldoNE)} votos de Lula no Nordeste superou essa margem em +${num(saldoNE - (flavioForaNE - lulaForaNE))} votos.`,
+            `In the 2nd round, Flávio Bolsonaro won ${d.estados_vencidos.flavio_ufs_2t} of the 27 federative units and led in the South, Center-West and Southeast — building a +${num(flavioForaNE - lulaForaNE)} vote lead outside the Northeast (${pct(flavioForaNE, lulaForaNE + flavioForaNE)} × ${pct(lulaForaNE, lulaForaNE + flavioForaNE)}). Because Brazil’s presidential race totals all valid votes nationwide in a single pool, Lula’s +${num(saldoNE)} vote margin in the Northeast outweighed that lead by +${num(saldoNE - (flavioForaNE - lulaForaNE))} votes.`,
           )}
         </p>
 
@@ -367,20 +361,20 @@ export function SimuladorForense({ d }: { d: ForenseData }) {
         <div className="num grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
             [
-              `${num(d.integridade.urnas_binarias)} / ${num(d.integridade.urnas_binarias)}`,
-              t('✓ RDVs idênticos ao Boletim de Urna (0 divergências)', '✓ RDVs identical to the Ballot Report (0 divergences)'),
+              `${num(d.integridade.urnas_binarias - d.integridade.rdv_divergentes)} / ${num(d.integridade.urnas_binarias)}`,
+              t(`Urnas cuja recontagem voto a voto (RDV) bate com o boletim · ${num(d.integridade.rdv_divergentes)} divergências`, `Machines whose vote-by-vote recount (RDV) matches the tally · ${num(d.integridade.rdv_divergentes)} mismatches`),
             ],
             [
               `${num(d.integridade.hashes_ok)}`,
-              t('✓ Hashes SHA-512 conferidos com 100% de integridade', '✓ SHA-512 file hashes verified with 100% integrity'),
+              t(`Arquivos com hash SHA-512 conferido, de ${num(d.integridade.hashes_verificados)}`, `Files with a matching SHA-512 hash, out of ${num(d.integridade.hashes_verificados)}`),
             ],
             [
               `${d.integridade.versoes_distintas}`,
-              t(`✓ Versão única em todas as urnas (${d.integridade.versao_software})`, `✓ Single build on every machine (${d.integridade.versao_software})`),
+              t(`Versão de software nas urnas eletrônicas (${d.integridade.versao_software})`, `Software build across electronic machines (${d.integridade.versao_software})`),
             ],
             [
               `${num(d.integridade.votos_sem_habilitacao)}`,
-              t('✓ Votos computados sem eleitor habilitado antes nos logs', '✓ Votes recorded without a prior enabled voter in logs'),
+              t('Votos no log sem um eleitor liberado antes (o esperado é zero)', 'Votes in the log with no voter released first (expected: zero)'),
             ],
           ].map(([valor, desc]) => (
             <div key={desc} className="border border-linha bg-papel p-4">
@@ -456,7 +450,7 @@ export function SimuladorForense({ d }: { d: ForenseData }) {
                 </span>
               ) : (
                 <span className="ml-1.5 border border-linha px-2 py-0.5 text-suave">
-                  {t('Desvio máx. 0,28 p.p. (cauda natural ≥50)', 'Max dev. 0.28 pp (natural ≥50 tail)')}
+                  {t(`Não uniforme (χ² acima de ${dec(serieAtual.critico_95)})`, `Not uniform (χ² above ${dec(serieAtual.critico_95)})`)}
                 </span>
               )}
             </span>
@@ -487,8 +481,8 @@ export function SimuladorForense({ d }: { d: ForenseData }) {
           </div>
           <p className="text-xs text-suave">
             {t(
-              'O traço vertical marca exatamente 10,00%. Nenhum dígito apresenta pico artificial de digitação humana.',
-              'The vertical tick marks exactly 10.00%. No digit shows an artificial human-entry spike.',
+              'O traço vertical marca 10,00%. Quando o teste falha, o desenho é uma rampa suave de 0 a 9, não picos em 0 ou 5. A mesma rampa aparece nos votos de Lula quando as seções são separadas por tamanho (50–99, 100–199, 200+ votos): é efeito do tamanho limitado das seções, e atinge os dois candidatos.',
+              'The vertical tick marks 10.00%. When the test fails, the shape is a smooth slope from 0 to 9, not spikes at 0 or 5. The same slope shows up in Lula’s votes once sections are split by size (50–99, 100–199, 200+ votes): it comes from the limited size of sections and affects both candidates.',
             )}
           </p>
         </div>

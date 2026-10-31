@@ -16,11 +16,8 @@ export function colorirTexto(texto: string): ReactNode {
     if (inicio > cursor) {
       partes.push(texto.slice(cursor, inicio))
     }
-    const cor = token.startsWith('+')
-      ? 'text-emerald-400'
-      : token.startsWith('-') || token.startsWith('−')
-        ? 'text-red-400'
-        : 'text-tinta'
+    // one accent for any signed figure: green/red would read as good/bad for whichever candidate the sign refers to
+    const cor = /^[+−-]/.test(token) ? 'text-amber-300' : 'text-tinta'
     partes.push(
       createElement('span', { key: inicio, className: `num font-semibold ${cor}` }, token),
     )

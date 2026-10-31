@@ -12,6 +12,11 @@ export type FactData = {
   por_comparecimento: { faixa: string; secoes: number; votantes_a_mais: number; variacao_lula_pp: number; variacao_flavio_pp: number }[]
   extremos: { secoes: number; lula_1t: number; flavio_1t: number; lula_2t: number; flavio_2t: number; municipios: string[] }
   extremos_flavio: number
+  relatorio: {
+    sem_apos_17h: { secoes_excluidas: number; secoes: number; votantes_excluidos: number; flavio_pct_restante: number; votantes_17h15: number }
+    por_fechamento: { faixa: string; secoes: number; votantes: number; lula_1t: number; lula_2t: number }[]
+    sp_19h: { secoes: number; capital: number; lula_1t: number; lula_2t: number; saldo_lula: number }
+  }
   mesario: null | {
     urnas: number
     votos: number
@@ -87,6 +92,13 @@ const dec = (v: number, d = 2) => v.toLocaleString(loc(), { minimumFractionDigit
 const pp = (v: number) => `${v > 0 ? '+' : ''}${dec(v)}`
 const pc = (v: number) => `${dec(v)}%`
 
+const FAIXA_FECHAMENTO_EN: Record<string, string> = {
+  'Estados com outro fuso (relógio local antes das 17h)': 'States in other time zones (local clock before 5 pm)',
+  '17h00 a 17h00min59': '5:00 to 5:00:59 pm',
+  '17h01 a 17h14': '5:01 to 5:14 pm',
+  '17h15 ou depois': '5:15 pm or later',
+}
+
 function TabelaHorariosFatos({ d }: { d: Alegacoes }) {
   const t = useT()
   const horas = [...new Set(d.emissao_vs_registro.map((r) => r.hora))].sort((a, b) => a - b)
@@ -148,6 +160,17 @@ function Item({ afirmacao, veredito, resumo, detalhes, abertoPadrao }: EntradaFa
         </span>
       </summary>
       {detalhes && <div className="mt-6 max-w-[68ch] space-y-4 leading-relaxed">{colorir(detalhes)}</div>}
+      <button
+        type="button"
+        onClick={() =>
+          import('./cardFato').then((m) =>
+            m.compartilharCard({ afirmacao, veredito, rotulo: VEREDITO[veredito][en ? 1 : 0], resumo, lang: en ? 'en' : 'pt' }),
+          )
+        }
+        className="mt-6 min-h-10 cursor-pointer border border-linha px-4 text-sm font-semibold text-suave hover:border-tinta hover:text-tinta"
+      >
+        {en ? 'Share as image' : 'Compartilhar como imagem'}
+      </button>
     </details>
   )
 }
@@ -181,6 +204,7 @@ export function FactCheck({
   const r = u.resumo
   const lg = f.log
   const ms = f.mesario
+  const rel = f.relatorio
   const maiorModelo = Math.max(...u.modelo_urna.map((m) => Math.abs(m.desvio_vs_municipio_pp ?? 0)))
   const pctL = (100 * lula) / (lula + flavio)
   const grupo100 = ms?.por_mesario.find((g) => g.grupo === '100 ou mais')
@@ -196,6 +220,7 @@ export function FactCheck({
         const ret = forense.retencao
         const digComp = forense.digitos.comparecimento_2t
         const digLula = forense.digitos.lula_2t
+        const digFlavio = forense.digitos.flavio_2t
 
         let ueNovasSec = 0
         let ueNovasLula = 0
@@ -287,10 +312,10 @@ export function FactCheck({
               'Os últimos dígitos dos votos nas seções violam a distribuição estatística esperada.',
               'The last digits of section vote counts violate the expected statistical distribution.',
             ),
-            veredito: 'falso' as const,
+            veredito: 'ressalva' as const,
             resumo: t(
-              `Em ${num(digComp.secoes)} seções com 50+ votos, cada dígito final (0 a 9) do comparecimento aparece entre ${pc(Math.min(...digComp.pcts))} e ${pc(Math.max(...digComp.pcts))} (esperado: 10,00%; qui-quadrado = ${dec(digComp.chi2)}, dentro do limite de ${dec(digComp.critico_95)}). Nos votos de Lula o qui-quadrado é ${dec(digLula.chi2)}, sem nenhum pico artificial em 0 ou 5.`,
-              `Across ${num(digComp.secoes)} sections with 50+ votes, each ending digit (0 to 9) of turnout appears between ${pc(Math.min(...digComp.pcts))} and ${pc(Math.max(...digComp.pcts))} (expected: 10.00%; chi-squared = ${dec(digComp.chi2)}, inside the ${dec(digComp.critico_95)} threshold). For Lula’s votes chi-squared is ${dec(digLula.chi2)}, with no artificial spike at 0 or 5.`,
+              `Em ${num(digComp.secoes)} seções com 50+ votos, cada dígito final (0 a 9) do comparecimento aparece entre ${pc(Math.min(...digComp.pcts))} e ${pc(Math.max(...digComp.pcts))} (esperado: 10,00%; qui-quadrado = ${dec(digComp.chi2)}, dentro do limite de ${dec(digComp.critico_95)}). Nos votos de Lula o qui-quadrado é ${dec(digLula.chi2)}. Nos de Flávio, ${dec(digFlavio.chi2)}: acima do limite. Mas o desenho é uma rampa suave do 0 para o 9, sem pico em 0 ou 5, e a mesma rampa aparece nos votos de Lula quando as seções são separadas por tamanho. É efeito do tamanho limitado das seções, não sinal de número inventado.`,
+              `Across ${num(digComp.secoes)} sections with 50+ votes, each ending digit (0 to 9) of turnout appears between ${pc(Math.min(...digComp.pcts))} and ${pc(Math.max(...digComp.pcts))} (expected: 10.00%; chi-squared = ${dec(digComp.chi2)}, inside the ${dec(digComp.critico_95)} threshold). For Lula’s votes chi-squared is ${dec(digLula.chi2)}. For Flávio’s, ${dec(digFlavio.chi2)}: above the threshold. But the shape is a smooth slope from 0 to 9, with no spike at 0 or 5, and the same slope shows up in Lula’s votes once stations are split by size. It comes from the limited size of stations, not from made-up numbers.`,
             ),
           },
         ]
@@ -502,6 +527,15 @@ export function FactCheck({
           ),
         },
     {
+      afirmacao: t('As urnas de Serafina Corrêa (RS) tinham votos pré-registrados para Lula.', 'The machines in Serafina Corrêa (RS) had votes pre-registered for Lula.'),
+      veredito: 'falso',
+      resumo: t(
+        'As 40 urnas da cidade abriram às 8h00 e o log de nenhuma delas tem voto antes disso. Flávio venceu lá com 8.163 votos contra 2.511 de Lula (76,5%). Log, boletim e recontagem voto a voto têm os mesmos 10.968 votos. No país inteiro, nenhuma urna registra voto antes da abertura: os votos que aparecem antes das 8h no relógio da urna são de MT, MS, AM, RO, AC e RR, que abrem às 6h ou 7h no horário local, ou seja, 8h de Brasília.',
+        'All 40 machines in the town opened at 8:00 am and none of their logs has a vote before that. Flávio won there with 8,163 votes against 2,511 for Lula (76.5%). Log, report and vote-by-vote recount all show the same 10,968 votes. Nationwide, no machine records a vote before opening: votes showing before 8 am on the machine clock are from MT, MS, AM, RO, AC and RR, which open at 6 or 7 am local time, i.e. 8 am Brasília time.',
+      ),
+      detalhes: <Fonte links={[['Aos Fatos', 'https://www.aosfatos.org/noticias/e-falso-que-urnas-tinham-votos-pre-registrados-para-lula-em-serafina-correa-rs/']]} />,
+    },
+    {
       afirmacao: t('A urna registrou votos diferentes dos que as pessoas digitaram.', 'The machine recorded votes different from what people typed.'),
       veredito: 'falso',
       resumo: t(
@@ -545,6 +579,62 @@ export function FactCheck({
       ),
     },
     {
+      afirmacao: t(
+        'Sem as urnas que funcionaram depois das 17h, Flávio teria 52,39% e venceria (“Relatório Pericial Independente”).',
+        'Without the machines that ran past 5 pm, Flávio would have 52.39% and win (“Independent Forensic Report”).',
+      ),
+      veredito: 'falso',
+      resumo: t(
+        `A conta existe: refizemos e deu os mesmos ${pc(rel.sem_apos_17h.flavio_pct_restante)}. Mas, para chegar nela, o relatório joga fora ${num(rel.sem_apos_17h.secoes_excluidas)} das ${num(rel.sem_apos_17h.secoes)} seções (${num(rel.sem_apos_17h.votantes_excluidos)} votantes, 70% do país): todas as que fecharam a partir de 17h01. Isso é o normal: a urna só fecha depois que o último eleitor da fila vota. O próprio relatório fala em 2,5 milhões de votantes depois das 17h, mas tira 90 milhões da conta.`,
+        `The arithmetic is real: we redid it and got the same ${pc(rel.sem_apos_17h.flavio_pct_restante)}. But to get there the report throws out ${num(rel.sem_apos_17h.secoes_excluidas)} of ${num(rel.sem_apos_17h.secoes)} stations (${num(rel.sem_apos_17h.votantes_excluidos)} voters, 70% of the country): every one that closed at 5:01 pm or later. That is normal: a machine only closes after the last voter in line has voted. The report itself speaks of 2.5 million voters after 5 pm, yet removes 90 million from the count.`,
+      ),
+      detalhes: (
+        <>
+          <p>
+            {t(
+              'Separando as seções pelo horário em que fecharam, Lula subiu quase o mesmo tanto do 1º para o 2º turno em todos os grupos. As que fecharam mais tarde já eram mais Lula no 1º turno, porque são seções grandes de cidade, com fila:',
+              'Splitting stations by closing time, Lula rose by almost the same amount from the 1st to the 2nd round in every group. Those that closed later already leaned Lula in the 1st round, because they are large city stations with lines:',
+            )}
+          </p>
+          <TabelaColorida
+            cabecalho={[t('Fechou', 'Closed'), t('Seções', 'Stations'), t('Lula 1º turno', 'Lula 1st round'), t('Lula 2º turno', 'Lula 2nd round')]}
+            linhas={rel.por_fechamento.map((r) => [en ? FAIXA_FECHAMENTO_EN[r.faixa] ?? r.faixa : r.faixa, num(r.secoes), pc(r.lula_1t), pc(r.lula_2t)])}
+          />
+          <p>
+            {t(
+              'O relógio da urna marca a hora local. Desde 2022 a votação fecha às 17h de Brasília no país todo, por isso estados com outro fuso aparecem fechando às 15h ou 16h.',
+              'The machine clock shows local time. Since 2022 voting closes at 5 pm Brasília time nationwide, so states in other time zones appear to close at 3 or 4 pm.',
+            )}
+          </p>
+          <Fonte
+            links={[
+              ['Lupa', 'https://www.agencialupa.org/eleicoes/2026/10/30/documento-falso-distorce-dados-do-tse-para-alegar-fraude-na-eleicao-presidencial-de-2026/'],
+              ['Núcleo', 'https://nucleo.jor.br/republicacao/2026/10/29/relatorio-apocrifo-distorce-microdados-do-tse-para-alegar-fraude-eleitoral/'],
+            ]}
+          />
+        </>
+      ),
+    },
+    {
+      afirmacao: t(
+        `Em São Paulo, ${num(rel.sp_19h.secoes)} seções passaram das 19h e deram ${pc(rel.sp_19h.lula_2t)} a Lula.`,
+        `In São Paulo, ${num(rel.sp_19h.secoes)} stations stayed open past 7 pm and gave Lula ${pc(rel.sp_19h.lula_2t)}.`,
+      ),
+      veredito: 'ressalva',
+      resumo: t(
+        `Os números estão certos. Mas ${num(rel.sp_19h.capital)} dessas seções ficam na capital, e no 1º turno, sem prorrogação nenhuma, as mesmas seções já tinham dado ${pc(rel.sp_19h.lula_1t)} a Lula. Juntas, deram a Lula uma vantagem de ${num(rel.sp_19h.saldo_lula)} votos, contra uma diferença nacional de ${num(lula - flavio)}.`,
+        `The numbers are right. But ${num(rel.sp_19h.capital)} of these stations are in the city of São Paulo, and in the 1st round, with no extension at all, the same stations had already given Lula ${pc(rel.sp_19h.lula_1t)}. Together they gave Lula a ${num(rel.sp_19h.saldo_lula)}-vote edge, against a national gap of ${num(lula - flavio)}.`,
+      ),
+    },
+    {
+      afirmacao: t('8,6 milhões de pessoas votaram sem biometria.', '8.6 million people voted without biometrics.'),
+      veredito: 'ressalva',
+      resumo: t(
+        `Verdade: ${num(f.biometria.sem_biometria_2t)} votantes (${pc(f.biometria.pct_2t)}) foram liberados sem a digital no 2º turno. No 1º turno foram ${num(f.biometria.sem_biometria_1t)} (${pc(f.biometria.pct_1t)}), quase a mesma proporção. Quem não tem digital cadastrada ou cuja digital falha vota com documento conferido pelo mesário.`,
+        `True: ${num(f.biometria.sem_biometria_2t)} voters (${pc(f.biometria.pct_2t)}) were released without a fingerprint in the 2nd round. In the 1st round it was ${num(f.biometria.sem_biometria_1t)} (${pc(f.biometria.pct_1t)}), nearly the same share. People with no fingerprint on file, or whose fingerprint fails, vote after the poll worker checks their ID.`,
+      ),
+    },
+    {
       afirmacao: t('O crescimento de Lula entre os turnos é matematicamente impossível.', 'Lula’s growth between rounds is mathematically impossible.'),
       veredito: 'falso',
       resumo: t(
@@ -556,8 +646,8 @@ export function FactCheck({
       afirmacao: t('Há seções em que Flávio teve zero votos.', 'There are sections where Flávio got zero votes.'),
       veredito: 'ressalva',
       resumo: t(
-        `São ${num(f.extremos.secoes)} seções (com 50 votos ou mais). Mas não é coisa do 2º turno: no 1º turno, essas mesmas seções deram Lula ${num(f.extremos.lula_1t)} × Flávio ${num(f.extremos.flavio_1t)}. Também há ${num(f.extremos_flavio)} seções com zero votos para Lula.`,
-        `There are ${num(f.extremos.secoes)} such sections (with 50+ votes). But this is not new in the 2nd round: in the 1st round the same sections gave Lula ${num(f.extremos.lula_1t)} × Flávio ${num(f.extremos.flavio_1t)}. There are also ${num(f.extremos_flavio)} sections with zero votes for Lula.`,
+        `Verdade: são ${num(f.extremos.secoes)} seções, com ${num(f.extremos.lula_2t)} votos para Lula, o mesmo número que circula nas redes. Mas não é coisa do 2º turno: no 1º turno, essas mesmas seções deram Lula ${num(f.extremos.lula_1t)} × Flávio ${num(f.extremos.flavio_1t)}. Também há ${num(f.extremos_flavio)} seções com zero votos para Lula.`,
+        `True: there are ${num(f.extremos.secoes)} such sections, with ${num(f.extremos.lula_2t)} votes for Lula, the same figure circulating online. But this is not new in the 2nd round: in the 1st round the same sections gave Lula ${num(f.extremos.lula_1t)} × Flávio ${num(f.extremos.flavio_1t)}. There are also ${num(f.extremos_flavio)} sections with zero votes for Lula.`,
       ),
       detalhes: (
         <p>

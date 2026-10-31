@@ -14,6 +14,8 @@ export type SecaoBaseComparavel = {
 }
 
 export type DadosQrBu = {
+  /** Raw QR text exactly as read, kept so a published check can be re-verified by anyone */
+  bruto: string
   parte: number
   totalPartes: number
   turno: number | null
@@ -108,6 +110,13 @@ export function parseQrBu(textoBruto: string): DadosQrBu | null {
         cargoAtual = Number(valor)
         if (cargoAtual === 1) temCargoPresidente = true
         break
+      // APTO/COMP sit in the section header, before any CARG block (TSE QR Code BU manual)
+      case 'APTO':
+        aptos = Number(valor)
+        break
+      case 'COMP':
+        comparecimento = Number(valor)
+        break
       case 'HASH':
         hash = valor
         cargoAtual = null
@@ -117,9 +126,7 @@ export function parseQrBu(textoBruto: string): DadosQrBu | null {
         break
       default:
         if (cargoAtual === 1) {
-          if (chave === 'APTO') aptos = Number(valor)
-          else if (chave === 'COMP') comparecimento = Number(valor)
-          else if (chave === 'BRAN') brancos = Number(valor)
+          if (chave === 'BRAN') brancos = Number(valor)
           else if (chave === 'NULO') nulos = Number(valor)
           else if (/^\d{2}$/.test(chave)) {
             const numCand = Number(chave)
@@ -136,6 +143,7 @@ export function parseQrBu(textoBruto: string): DadosQrBu | null {
   if (!uf || !zona || !secao) return null
 
   return {
+    bruto: limpo,
     parte,
     totalPartes,
     turno,

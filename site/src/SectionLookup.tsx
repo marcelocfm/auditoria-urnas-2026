@@ -200,6 +200,23 @@ export function SectionLookup() {
   // QR Scanner & verification state
   const [scannerAberto, setScannerAberto] = useState(false)
   const [qrLido, setQrLido] = useState<DadosQrBu | null>(null)
+  const [publicacao, setPublicacao] = useState<'livre' | 'enviando' | 'ok' | 'repetido' | 'erro'>('livre')
+  useEffect(() => setPublicacao('livre'), [qrLido])
+  const publicarConferencia = async () => {
+    if (!qrLido) return
+    setPublicacao('enviando')
+    try {
+      const r = await fetch('/api/conferencias', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ qr: qrLido.bruto }),
+      })
+      const j = (await r.json()) as { registrado?: boolean }
+      setPublicacao(!r.ok ? 'erro' : j.registrado ? 'ok' : 'repetido')
+    } catch {
+      setPublicacao('erro')
+    }
+  }
 
   // Quick city search state
   const [buscaCidade, setBuscaCidade] = useState('')
@@ -770,6 +787,29 @@ export function SectionLookup() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {comparacaoQr.resultado.temVotosPresidente && (
+            <div className="flex flex-wrap items-center gap-3 border-t border-linha pt-4 text-sm">
+              <button
+                type="button"
+                onClick={() => void publicarConferencia()}
+                disabled={publicacao !== 'livre' && publicacao !== 'erro'}
+                className="min-h-10 cursor-pointer border border-tinta bg-tinta px-4 font-semibold text-fundo hover:opacity-85 disabled:cursor-default disabled:opacity-50"
+              >
+                {publicacao === 'enviando'
+                  ? t('Publicando…', 'Publishing…')
+                  : t('Publicar esta conferência', 'Publish this check')}
+              </button>
+              <span className="text-suave">
+                {publicacao === 'ok'
+                  ? t('✓ Publicada no painel de conferências.', '✓ Published on the checks panel.')
+                  : publicacao === 'repetido'
+                    ? t('Este boletim já tinha sido conferido por alguém.', 'This report had already been checked by someone.')
+                    : publicacao === 'erro'
+                      ? t('Não foi possível publicar. Tente de novo.', 'Could not publish. Try again.')
+                      : t('Vai para o painel público só o conteúdo do QR Code e o resultado. Nenhum dado seu.', 'Only the QR content and the result go to the public panel. None of your data.')}
+              </span>
             </div>
           )}
         </div>

@@ -92,10 +92,10 @@ def main():
         FROM d WHERE aptos > 0 AND l1 + f1 > 0 AND l2 + f2 > 0 GROUP BY 1 ORDER BY min(100.0 * (c2 - c1) / aptos)""")
     extremos = one(con, """
         SELECT count(*) secoes, sum(l1) lula_1t, sum(f1) flavio_1t, sum(l2) lula_2t, sum(f2) flavio_2t
-        FROM d WHERE l2 + f2 >= 50 AND f2 = 0""")
+        FROM d WHERE l2 > 0 AND f2 = 0""")
     extremos["municipios"] = [r["municipio"] for r in rows(con, """
-        SELECT municipio, count(*) n FROM d WHERE l2 + f2 >= 50 AND f2 = 0 GROUP BY 1 ORDER BY 2 DESC LIMIT 8""")]
-    extremos_flavio = one(con, "SELECT count(*) secoes FROM d WHERE l2 + f2 >= 50 AND l2 = 0")
+        SELECT municipio, count(*) n FROM d WHERE l2 > 0 AND f2 = 0 GROUP BY 1 ORDER BY 2 DESC LIMIT 8""")]
+    extremos_flavio = one(con, "SELECT count(*) secoes FROM d WHERE f2 > 0 AND l2 = 0")
 
     log = one(con, f"""
         SELECT count(*) urnas, count(*) FILTER (WHERE erro IS NOT NULL) erros, sum(habilitados) habilitados,
@@ -105,7 +105,41 @@ def main():
                min(menor_gap) menor_intervalo_s, sum(por_biometria) por_biometria
         FROM read_parquet('{LOG}')""")
 
-    payload = {"abstencao": abstencao, "biometria": biometria, "por_comparecimento": por_comparecimento,
+    # the viral "Relatório Pericial Independente": reproduce its numbers and show what each cut removes
+    con.execute(f"""CREATE TABLE r AS
+        SELECT b.uf, b.cd_municipio, b.comp, b.enc, b.l l2, b.f f2, a.l l1, a.f f1 FROM
+          (SELECT turno, uf, cd_municipio, zona, secao, min(comparecimento) comp, any_value(dt_encerramento) enc,
+                  coalesce(sum(votos) FILTER (WHERE nr_votavel = 13 AND cd_tipo_votavel = 1), 0) l,
+                  coalesce(sum(votos) FILTER (WHERE nr_votavel = 22 AND cd_tipo_votavel = 1), 0) f
+           FROM read_parquet('{BU}') WHERE cd_cargo = 1 GROUP BY ALL) b
+        JOIN (SELECT uf, cd_municipio, zona, secao,
+                  coalesce(sum(votos) FILTER (WHERE nr_votavel = 13 AND cd_tipo_votavel = 1), 0) l,
+                  coalesce(sum(votos) FILTER (WHERE nr_votavel = 22 AND cd_tipo_votavel = 1), 0) f
+              FROM read_parquet('{BU}') WHERE cd_cargo = 1 AND turno = 1 GROUP BY ALL) a USING (uf, cd_municipio, zona, secao)
+        WHERE b.turno = 2""")
+    relatorio = {
+        "sem_apos_17h": one(con, """
+            SELECT count(*) FILTER (WHERE enc >= TIMESTAMP '2026-10-25 17:01:00') secoes_excluidas, count(*) secoes,
+                   sum(comp) FILTER (WHERE enc >= TIMESTAMP '2026-10-25 17:01:00') votantes_excluidos,
+                   round(100.0 * sum(f2) FILTER (WHERE enc < TIMESTAMP '2026-10-25 17:01:00')
+                         / sum(l2 + f2) FILTER (WHERE enc < TIMESTAMP '2026-10-25 17:01:00'), 2) flavio_pct_restante,
+                   sum(comp) FILTER (WHERE enc >= TIMESTAMP '2026-10-25 17:15:00') votantes_17h15
+            FROM r"""),
+        "por_fechamento": rows(con, """
+            SELECT CASE WHEN enc < TIMESTAMP '2026-10-25 17:00:00' THEN 'Estados com outro fuso (relógio local antes das 17h)'
+                        WHEN enc < TIMESTAMP '2026-10-25 17:01:00' THEN '17h00 a 17h00min59'
+                        WHEN enc < TIMESTAMP '2026-10-25 17:15:00' THEN '17h01 a 17h14' ELSE '17h15 ou depois' END faixa,
+                   count(*) secoes, sum(comp) votantes,
+                   round(100.0 * sum(l1) / sum(l1 + f1), 2) lula_1t, round(100.0 * sum(l2) / sum(l2 + f2), 2) lula_2t
+            FROM r GROUP BY 1 ORDER BY min(enc)"""),
+        "sp_19h": one(con, """
+            SELECT count(*) secoes, count(*) FILTER (WHERE cd_municipio = 71072) capital,
+                   round(100.0 * sum(l1) / sum(l1 + f1), 2) lula_1t, round(100.0 * sum(l2) / sum(l2 + f2), 2) lula_2t,
+                   sum(l2) - sum(f2) saldo_lula
+            FROM r WHERE uf = 'SP' AND enc >= TIMESTAMP '2026-10-25 19:00:00'"""),
+    }
+
+    payload = {"relatorio": relatorio, "abstencao": abstencao, "biometria": biometria, "por_comparecimento": por_comparecimento,
                "extremos": extremos, "extremos_flavio": extremos_flavio["secoes"], "log": log,
                "mesario": mesarios(con)}
     OUT.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")

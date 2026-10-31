@@ -2,6 +2,8 @@
 import hashlib
 import json
 import sys
+import threading
+import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -20,6 +22,48 @@ def resources(package):
         return [x["url"] for x in json.load(r)["result"]["results"][0]["resources"]]
 
 
+SEGMENTS = 16
+BIG = 256 << 20
+
+
+def fetch_ranges(url, tmp, size):
+    """Download a big file over SEGMENTS parallel ranged connections (the CDN throttles each connection).
+
+    Progress per segment lives in <tmp>.json so an interrupted run resumes where each segment stopped;
+    a plain sequential .part from an older run counts as an already-finished prefix.
+    """
+    state_path = tmp.with_suffix(tmp.suffix + ".json")
+    if state_path.exists():
+        segs = json.loads(state_path.read_text())
+    else:
+        have = tmp.stat().st_size if tmp.exists() else 0
+        step = -(-(size - have) // SEGMENTS)
+        segs = [[s, s, min(s + step, size)] for s in range(have, size, step)]  # [start, position, end)
+    with open(tmp, "ab"):
+        pass
+    with open(tmp, "r+b") as f:
+        f.truncate(size)
+    lock = threading.Lock()
+
+    def worker(seg):
+        while seg[1] < seg[2]:
+            req = urllib.request.Request(url, headers={"Range": f"bytes={seg[1]}-{seg[2] - 1}"})
+            try:
+                with urllib.request.urlopen(req, timeout=120) as r, open(tmp, "r+b") as f:
+                    f.seek(seg[1])
+                    while seg[1] < seg[2] and (chunk := r.read(1 << 20)):
+                        f.write(chunk)
+                        with lock:
+                            seg[1] += len(chunk)
+                            state_path.write_text(json.dumps(segs))
+            except (OSError, urllib.error.URLError):
+                time.sleep(5)  # transient CDN error: retry this segment from where it stopped
+
+    with ThreadPoolExecutor(len(segs)) as pool:
+        list(pool.map(worker, segs))
+    state_path.unlink()
+
+
 def fetch(url, dest):
     dest.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, method="HEAD")
@@ -28,6 +72,10 @@ def fetch(url, dest):
     if dest.exists() and (size is None or dest.stat().st_size == int(size)):
         return dest, "cached"
     tmp = dest.with_suffix(dest.suffix + ".part")
+    if size is not None and int(size) > BIG:
+        fetch_ranges(url, tmp, int(size))
+        tmp.replace(dest)
+        return dest, "downloaded"
     have = tmp.stat().st_size if tmp.exists() else 0
     req = urllib.request.Request(url, headers={"Range": f"bytes={have}-"} if have else {})
     with urllib.request.urlopen(req, timeout=120) as r, open(tmp, "ab" if have else "wb") as f:
@@ -68,7 +116,12 @@ def _job(url, folder):
 
 
 def main():
-    if sys.argv[1:] == ["urna"]:
+    if sys.argv[1:2] == ["urna"] and len(sys.argv) > 2:
+        # selected packages: urna <turno> <UF> [UF...], e.g. urna 1 BA
+        turno, ufs = sys.argv[2], sys.argv[3:]
+        urls = [(u, f"urna_{turno}t") for u in resources("resultados-2026-arquivos-transmitidos-para-totalizacao")
+                if u.endswith(".zip") and any(u.endswith(f"_{turno}t_{uf}.zip") for uf in ufs)]
+    elif sys.argv[1:] == ["urna"]:
         # raw ballot-box files (signed BU, RDV, logs): second round only, ~124 GB
         urls = [(u, "urna") for u in resources("resultados-2026-arquivos-transmitidos-para-totalizacao")
                 if u.endswith(".zip") and "_2t_" in u]
@@ -76,7 +129,7 @@ def main():
     else:
         urls = [(u, "bweb") for u in resources("resultados-2026-boletim-de-urna") if u.endswith(".zip")]
         urls += [(u, "oficial") for u in OFFICIAL]
-    with ThreadPoolExecutor(4) as pool:
+    with ThreadPoolExecutor(3) as pool:
         for line in pool.map(lambda a: job(*a), urls):
             print(line, flush=True)
 
